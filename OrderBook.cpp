@@ -202,7 +202,7 @@ public:
         }
     }
 
-    // TO IMPLEMENT
+
     void serialize(const std::string& filename) {
         std::priority_queue<Order, std::vector<Order>, std::less<Order> > tempAsk = orderBookData.getBestAskQueue();
         std::priority_queue<Order, std::vector<Order>, std::greater<Order> > tempBid = orderBookData.getBestBidQueue();
@@ -247,10 +247,7 @@ public:
         }
     }
 
-
-    // TO IMPLEMENT
     void deserialize(const std::string& filename) {
-        // Existing code to read the file content...
 
         std::map<std::string, std::string> attributeMap;
         std::ifstream inFile(filename);
