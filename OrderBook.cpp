@@ -420,5 +420,5 @@ int main() {
    std::string filename = "orderbook_data.json";
    orderBook.deserialize(filename);
    orderBook.displayOrderBook();
-   return 0;
+   return 2;
 }
