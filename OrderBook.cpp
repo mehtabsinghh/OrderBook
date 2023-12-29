@@ -5,7 +5,7 @@
 #include <vector>
 #include <queue>
 #include <map>
-
+#include <mutex>
 
 // Definition of the Order class
 class Order {
@@ -117,93 +117,35 @@ public:
     }
 };
 
-class OrderBook {
+// Used to serialise and deserialise the orderbook implemented as a singleton class
+class SerialisationService {
 private:
-    OrderBookData orderBookData;
-    int orderID = 0;
+    static SerialisationService *uniqueInstance;
+    static std::mutex mtx;
+    std::string filename;
+
+    SerialisationService() {
+        this->filename = "orderbook_data.json";
+    }
+    ~SerialisationService() = default;
 
 public:
-    OrderBook() = default;
-    ~OrderBook() = default;
+    SerialisationService(const SerialisationService &) = delete;
+    SerialisationService &operator=(const SerialisationService &) = delete;
 
-    void placeAsk(int price, int quantity) {
-        Order ask("ASK", price, quantity, ++orderID);
-        orderBookData.addAskOrder(ask);
-    }
-
-    void placeBid(int price, int quantity) {
-        Order bid("BID", price, quantity, ++orderID);
-        orderBookData.addBidOrder(bid);
-    }
-
-    // Method to match bid and ask orders
-    void matchBidAsk() {
-        while (!orderBookData.bestAskEmpty() && !orderBookData.bestBidEmpty()) {
-            Order ask = orderBookData.bestAskTop();
-            Order bid = orderBookData.bestBidTop();
-            if (ask.getPrice() > bid.getPrice()) {
-                // If no orders are eligible for matching, break the loop
-                std::cout << "No orders eligible for matching" << std::endl;
-                break;
-            }
-            
-            int currentAskQuantity = ask.getQuantity();
-            int currentBidQuantity = bid.getQuantity();
-            int matchedQuantity = std::min(currentAskQuantity, currentBidQuantity);
-            ask.setQuantity(currentAskQuantity - matchedQuantity);
-            bid.setQuantity(currentBidQuantity - matchedQuantity);
-
-            // Output matched order details
-            std::cout << "Matched: Ask Order ID " << ask.getOrderID() << " with Bid Order ID " << bid.getOrderID()
-                      << ", Quantity " << matchedQuantity << ", Price " << ask.getPrice() << std::endl;
-                      
-            orderBookData.bestAskPop();
-            orderBookData.bestBidPop();
-
-            // Push remaining quantities back to respective queues
-            if (ask.getQuantity() > 0)
-                orderBookData.addAskOrder(ask);
-            if (bid.getQuantity() > 0)
-                orderBookData.addBidOrder(bid);
-        }
-    }
-
-    // Method for executing a market buy order
-    void marketBuy(int quantity) {
-        while (quantity != 0 && !orderBookData.bestAskEmpty()) {
-            Order ask = orderBookData.bestAskTop();
-            int askQuantity = ask.getQuantity();
-            int matchedQuantity = std::min(quantity, askQuantity);
-            quantity -= matchedQuantity;
-            askQuantity -= matchedQuantity;
-            orderBookData.bestAskPop();
-            if (askQuantity > 0) {
-                // Updates the quantity
-                ask.setQuantity(askQuantity);
-                orderBookData.addAskOrder(ask);
-            } 
-        }
-    }
-
-    // Method for executing a market sell order
-    void marketSell(int quantity) {
-        while (quantity != 0 && !orderBookData.bestBidEmpty()) {
-            Order bid = orderBookData.bestBidTop();
-            int bidQuantity = bid.getQuantity();
-            int matchedQuantity = std::min(quantity, bidQuantity);
-            quantity -= matchedQuantity;
-            bidQuantity -= matchedQuantity;
-            orderBookData.bestBidPop();
-            if (bidQuantity > 0) {
-                // Updates the quantity
-                bid.setQuantity(bidQuantity);
-                orderBookData.addBidOrder(bid);
+    static SerialisationService *getInstance() {
+        if (uniqueInstance == nullptr)
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (uniqueInstance == nullptr)
+            {
+                uniqueInstance = new SerialisationService();
             }
         }
+        return uniqueInstance;
     }
 
-
-    void serialize(const std::string& filename) {
+    void serialise(const OrderBookData& orderBookData) {
         std::priority_queue<Order, std::vector<Order>, std::less<Order> > tempAsk = orderBookData.getBestAskQueue();
         std::priority_queue<Order, std::vector<Order>, std::greater<Order> > tempBid = orderBookData.getBestBidQueue();
         std::ofstream outFile(filename);
@@ -247,8 +189,7 @@ public:
         }
     }
 
-    void deserialize(const std::string& filename) {
-
+    void deserialise(OrderBookData& orderBookData) {
         std::map<std::string, std::string> attributeMap;
         std::ifstream inFile(filename);
         if (!inFile.is_open()) {
@@ -303,7 +244,6 @@ public:
             int quantity = std::stoi(attributeMap["quantity"]);
             int orderID = std::stoi(attributeMap["orderID"]);
             
-
             // Create an Order object using the extracted attributes
             Order newOrder(type, price, quantity, orderID);
 
@@ -317,8 +257,104 @@ public:
             pos = endPos + 1;
             attributeMap.clear(); // Clear the map for the next object
         }
-
         std::cout << "Orders deserialized from " << filename << " successfully." << std::endl;
+    }
+};
+
+SerialisationService *SerialisationService::uniqueInstance = nullptr;
+std::mutex SerialisationService::mtx;
+
+class OrderBook {
+private:
+    SerialisationService *serliaiser = SerialisationService::getInstance(); 
+    OrderBookData orderBookData;
+    int orderID = 0;
+
+public:
+    OrderBook() {
+        serliaiser->deserialise(orderBookData); 
+    }
+    ~OrderBook() = default;
+
+    void placeAsk(int price, int quantity) {
+        Order ask("ASK", price, quantity, ++orderID);
+        orderBookData.addAskOrder(ask);
+        serliaiser->serialise(orderBookData);
+    }
+
+    void placeBid(int price, int quantity) {
+        Order bid("BID", price, quantity, ++orderID);
+        orderBookData.addBidOrder(bid);
+        serliaiser->serialise(orderBookData);
+    }
+
+    // Method to match bid and ask orders
+    void matchBidAsk() {
+        while (!orderBookData.bestAskEmpty() && !orderBookData.bestBidEmpty()) {
+            Order ask = orderBookData.bestAskTop();
+            Order bid = orderBookData.bestBidTop();
+            if (ask.getPrice() > bid.getPrice()) {
+                // If no orders are eligible for matching, break the loop
+                std::cout << "No orders eligible for matching" << std::endl;
+                break;
+            }
+            
+            int currentAskQuantity = ask.getQuantity();
+            int currentBidQuantity = bid.getQuantity();
+            int matchedQuantity = std::min(currentAskQuantity, currentBidQuantity);
+            ask.setQuantity(currentAskQuantity - matchedQuantity);
+            bid.setQuantity(currentBidQuantity - matchedQuantity);
+
+            // Output matched order details
+            std::cout << "Matched: Ask Order ID " << ask.getOrderID() << " with Bid Order ID " << bid.getOrderID()
+                      << ", Quantity " << matchedQuantity << ", Price " << ask.getPrice() << std::endl;
+                      
+            orderBookData.bestAskPop();
+            orderBookData.bestBidPop();
+
+            // Push remaining quantities back to respective queues
+            if (ask.getQuantity() > 0)
+                orderBookData.addAskOrder(ask);
+            if (bid.getQuantity() > 0)
+                orderBookData.addBidOrder(bid);
+        }
+        serliaiser->serialise(orderBookData);
+    }
+
+    // Method for executing a market buy order
+    void marketBuy(int quantity) {
+        while (quantity != 0 && !orderBookData.bestAskEmpty()) {
+            Order ask = orderBookData.bestAskTop();
+            int askQuantity = ask.getQuantity();
+            int matchedQuantity = std::min(quantity, askQuantity);
+            quantity -= matchedQuantity;
+            askQuantity -= matchedQuantity;
+            orderBookData.bestAskPop();
+            if (askQuantity > 0) {
+                // Updates the quantity
+                ask.setQuantity(askQuantity);
+                orderBookData.addAskOrder(ask);
+            }
+        }
+        serliaiser->serialise(orderBookData);
+    }
+
+    // Method for executing a market sell order
+    void marketSell(int quantity) {
+        while (quantity != 0 && !orderBookData.bestBidEmpty()) {
+            Order bid = orderBookData.bestBidTop();
+            int bidQuantity = bid.getQuantity();
+            int matchedQuantity = std::min(quantity, bidQuantity);
+            quantity -= matchedQuantity;
+            bidQuantity -= matchedQuantity;
+            orderBookData.bestBidPop();
+            if (bidQuantity > 0) {
+                // Updates the quantity
+                bid.setQuantity(bidQuantity);
+                orderBookData.addBidOrder(bid);
+            }
+        }
+        serliaiser->serialise(orderBookData);
     }
 
     // Method to display the current order book
@@ -347,16 +383,15 @@ public:
                 std::cout << "\n";
             }
         }
+        serliaiser->serialise(orderBookData);
     }
 };
 
 // Main function for testing the OrderBook functionalities
 int main() {
     OrderBook orderBook;
-
+    
     // Placing ask orders and displaying the initial order book
-    std::string filename = "orderbook_data.json";
-    orderBook.deserialize(filename);
     orderBook.displayOrderBook();
     return 0;
 }
