@@ -7,7 +7,7 @@
 #include <map>
 #include <mutex>
 
-// Definition of the Order class
+// Order class which contains all details related to the order being placed
 class Order {
 private:
     std::string type;
@@ -66,7 +66,7 @@ public:
     }
 };
 
-// Definition of the OrderBook class managing the data structure
+// Manages the data of the order book
 class OrderBookData {
 private:
     std::priority_queue<Order, std::vector<Order>, std::less<Order> > bestAsk;
@@ -264,6 +264,7 @@ public:
 SerialisationService *SerialisationService::uniqueInstance = nullptr;
 std::mutex SerialisationService::mtx;
 
+// Handles all operations related to the orderbook
 class OrderBook {
 private:
     SerialisationService *serliaiser;
@@ -277,12 +278,14 @@ public:
     }
     ~OrderBook() = default;
 
+    // Method to place an ask
     void placeAsk(int price, int quantity) {
         Order ask("ASK", price, quantity, ++orderID);
         orderBookData.addAskOrder(ask);
         serliaiser->serialise(orderBookData);
     }
 
+    // Method to place a bid
     void placeBid(int price, int quantity) {
         Order bid("BID", price, quantity, ++orderID);
         orderBookData.addBidOrder(bid);
@@ -388,6 +391,7 @@ public:
     }
 };
 
+// Class to let the user interact with the program
 class UserInterface {
 private:
     OrderBook orderBook;
