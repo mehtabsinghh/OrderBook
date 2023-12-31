@@ -266,12 +266,13 @@ std::mutex SerialisationService::mtx;
 
 class OrderBook {
 private:
-    SerialisationService *serliaiser = SerialisationService::getInstance(); 
+    SerialisationService *serliaiser;
     OrderBookData orderBookData;
     int orderID = 0;
 
 public:
     OrderBook() {
+        this->serliaiser = SerialisationService::getInstance(); 
         serliaiser->deserialise(orderBookData); 
     }
     ~OrderBook() = default;
@@ -387,11 +388,57 @@ public:
     }
 };
 
+class UserInterface {
+private:
+    OrderBook orderBook;
+    OrderBookData orderBookData;
+
+public:
+    UserInterface() = default;
+    ~UserInterface() = default;
+
+    void display() {
+        orderBook.displayOrderBook();
+    }
+
+    void run() {
+        std::string input;
+        display();
+        while (true) {
+            std::cout << "\nOptions: [bid / ask / exit]\nEnter command: ";
+            std::cin >> input;
+
+            if (input == "bid") {
+                int price, quantity;
+                std::cout << "Enter bid price: ";
+                std::cin >> price;
+                std::cout << "Enter bid quantity: ";
+                std::cin >> quantity;
+                orderBook.placeBid(price, quantity);
+                std::cout << "Bid placed successfully.\n";
+            } else if (input == "ask") {
+                int price, quantity;
+                std::cout << "Enter ask price: ";
+                std::cin >> price;
+                std::cout << "Enter ask quantity: ";
+                std::cin >> quantity;
+                orderBook.placeAsk(price, quantity);
+                std::cout << "Ask placed successfully.\n";
+            } else if (input == "exit") {
+                std::cout << "Exiting the program...\n";
+                break;
+            } else {
+                std::cout << "Invalid command. Please try again.\n";
+            }
+            orderBook.matchBidAsk();
+            display();
+        }
+    }
+};
+
 // Main function for testing the OrderBook functionalities
 int main() {
-    OrderBook orderBook;
-    
-    // Placing ask orders and displaying the initial order book
-    orderBook.displayOrderBook();
+    UserInterface ui;
+    ui.run();
     return 0;
 }
